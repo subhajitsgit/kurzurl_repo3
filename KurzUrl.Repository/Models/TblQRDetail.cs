@@ -1,0 +1,23 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace KurzUrl.Repository.Models;
+
+[Table("tbl_QRDetails", Schema = "dbo")]
+public class TblQRDetail
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public string MainUrl { get; set; } = string.Empty;
+    public byte[]? QRImage { get; set; }
+    public DateTime? CreatedOn { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime? ModifiedOn { get; set; }
+    public string? ModifiedBy { get; set; }
+    public bool? IsActive { get; set; }
+}
+
