@@ -89,17 +89,48 @@ namespace KurzUrl.Controllers.UserI_Interface
             var firstName = claims.FirstOrDefault(c => c.Type == ClaimTypes.GivenName)?.Value;
             var lastName = claims.FirstOrDefault(c => c.Type == ClaimTypes.Surname)?.Value;
             var email = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-            if (lastName == null) lastName = firstName;
-
-            var user = await _userManager.FindByEmailAsync(email);
-            if (user == null || !await _userManager.CheckPasswordAsync(user, "placeholder#ASD.123"))
+            
+            if (string.IsNullOrEmpty(email))
             {
-                json = JsonSerializer.Serialize(new { success = false, message = "Invalid username or password",  token = "" });
-
+                json = JsonSerializer.Serialize(new { success = false, message = "Email not found in Google account", token = "" });
                 return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
             }
+            
+            if (lastName == null) lastName = firstName;
+            if (firstName == null) firstName = "User";
 
-            // Authentication successful, generate JWT
+            var user = await _userManager.FindByEmailAsync(email);
+            
+            if (user == null)
+            {
+                List<string> rtn = new List<string>() { "User" };
+                user = new ApplicationUser
+                {
+                    UserName = firstName + lastName,
+                    Email = email,
+                    EmailConfirmed = true, // Confirmed because it comes from Google
+                    FirstName = firstName,
+                    LastName = lastName,
+                    AccessFailedCount = 0,
+                    LockoutEnabled = false,
+                    TwoFactorEnabled = false
+                };
+
+                var createResult = await _userManager.CreateAsync(user, "placeholder#ASD.123");
+                if (!createResult.Succeeded)
+                {
+                    json = JsonSerializer.Serialize(new { success = false, message = createResult.Errors.First().Description, token = "" });
+                    return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
+                }
+
+                var userRtn = await _userManager.FindByNameAsync(user.UserName);
+                if (userRtn != null)
+                {
+                    await _userManager.AddToRolesAsync(userRtn, rtn);
+                }
+            }
+
+            // Authentication successful, generate JWT (no necesitamos verificar contraseña para Google Auth)
             var token = await _jWTService.GenerateToken(user);
 
             json = JsonSerializer.Serialize(new { success = true, message = "successful", token = token, email = user.Email, name = user.UserName });
