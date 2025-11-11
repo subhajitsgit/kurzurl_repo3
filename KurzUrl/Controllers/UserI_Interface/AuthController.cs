@@ -173,27 +173,38 @@ namespace KurzUrl.Controllers.UserI_Interface
             var firstName = claims.FirstOrDefault(c => c.Type == ClaimTypes.GivenName)?.Value;
             var lastName = claims.FirstOrDefault(c => c.Type == ClaimTypes.Surname)?.Value;
             var email = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+            
+            // Validar que el email esté presente
+            if (string.IsNullOrEmpty(email))
+            {
+                json = JsonSerializer.Serialize(new { success = false, message = "Email not found in Google account" });
+                return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
+            }
+            
             if (lastName == null) lastName = firstName;
+            if (firstName == null) firstName = "User";
+            
+            var isRegistered = await _userManager.FindByEmailAsync(email);
+
+            // Si el email ya está registrado, hacer login automáticamente en lugar de mostrar error
+            if (isRegistered != null)
+            {
+                var token = await _jWTService.GenerateToken(isRegistered);
+                json = JsonSerializer.Serialize(new { success = true, message = "Login successful", token = token, email = isRegistered.Email, name = isRegistered.UserName });
+                return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
+            }
+
             var user = new ApplicationUser
             {
-                UserName = firstName+lastName,
+                UserName = firstName + lastName,
                 Email = email,
-                EmailConfirmed = false,
+                EmailConfirmed = true, // Confirmado porque viene de Google
                 FirstName = firstName,
                 LastName = lastName,
                 AccessFailedCount = 0,
                 LockoutEnabled = false,
                 TwoFactorEnabled = false
             };
-
-            var isRegistered = await _userManager.FindByEmailAsync(user.Email);
-
-            if (isRegistered != null)
-            {
-                json = JsonSerializer.Serialize(new { success = false, message = "Already registered email"});
-                return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
-
-            }
 
             var res = await _userManager.CreateAsync(user, "placeholder#ASD.123");
 
@@ -206,10 +217,18 @@ namespace KurzUrl.Controllers.UserI_Interface
 
             var userRtn = await _userManager.FindByNameAsync(user.UserName);
 
-            var roleRtn = await _userManager.AddToRolesAsync(userRtn, rtn);
-
-
-            json = JsonSerializer.Serialize(new { success = true, message = "success"});
+            if (userRtn != null)
+            {
+                await _userManager.AddToRolesAsync(userRtn, rtn);
+                
+                // Generar token y hacer login automático después del registro exitoso
+                var token = await _jWTService.GenerateToken(userRtn);
+                json = JsonSerializer.Serialize(new { success = true, message = "Registration successful", token = token, email = userRtn.Email, name = userRtn.UserName });
+            }
+            else
+            {
+                json = JsonSerializer.Serialize(new { success = true, message = "success" });
+            }
 
             return Content($"<script>window.opener.postMessage({json},'*'); window.close();</script>", "text/html");
         }
