@@ -1,5 +1,6 @@
 ﻿using KurzUrl.Data.Dto;
 using KurzUrl.Repository.Entities;
+using KurzUrl.Repository.Models;
 using KurzUrl.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -19,13 +21,32 @@ namespace KurzUrl.Controllers.UserI_Interface
     {
         private readonly IJWTService _jWTService;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ShortUrlContext _dbContext;
         private readonly Microsoft.Extensions.Hosting.IHostingEnvironment _hostingEnvironment;
         public AuthController(IJWTService jWTService, UserManager<ApplicationUser> userManager,
+            ShortUrlContext dbContext,
             Microsoft.Extensions.Hosting.IHostingEnvironment configuration)
         {
             _jWTService = jWTService;
             _userManager = userManager;
+            _dbContext = dbContext;
             _hostingEnvironment = configuration;
+        }
+
+        private async Task<ApplicationUser?> FindUserByEmailAsync(string email)
+        {
+            if (string.IsNullOrEmpty(email))
+                return null;
+
+            var normalizedEmail = _userManager.NormalizeEmail(email);
+            
+            var users = await _dbContext.Users
+                .Where(u => u.NormalizedEmail == normalizedEmail && !u.IsDeleted)
+                .OrderByDescending(u => u.EmailConfirmed)
+                .ThenByDescending(u => u.Id)
+                .ToListAsync();
+
+            return users.FirstOrDefault();
         }
 
 
@@ -35,7 +56,7 @@ namespace KurzUrl.Controllers.UserI_Interface
         {
             if (_hostingEnvironment.IsDevelopment())
             {
-                var user = await _userManager.FindByEmailAsync(request.Email);
+                var user = await FindUserByEmailAsync(request.Email);
                 if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
                 {
                     return Unauthorized("Invalid username or password");
@@ -99,7 +120,7 @@ namespace KurzUrl.Controllers.UserI_Interface
             if (lastName == null) lastName = firstName;
             if (firstName == null) firstName = "User";
 
-            var user = await _userManager.FindByEmailAsync(email);
+            var user = await FindUserByEmailAsync(email);
             
             if (user == null)
             {
@@ -184,7 +205,7 @@ namespace KurzUrl.Controllers.UserI_Interface
             if (lastName == null) lastName = firstName;
             if (firstName == null) firstName = "User";
             
-            var isRegistered = await _userManager.FindByEmailAsync(email);
+            var isRegistered = await FindUserByEmailAsync(email);
 
             // Si el email ya está registrado, hacer login automáticamente en lugar de mostrar error
             if (isRegistered != null)

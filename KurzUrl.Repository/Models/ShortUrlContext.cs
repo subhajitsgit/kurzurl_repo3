@@ -51,6 +51,15 @@ public partial class ShortUrlContext : IdentityDbContext<ApplicationUser,Identit
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        
+        modelBuilder.Entity<ApplicationUser>(entity =>
+        {
+            entity.HasIndex(e => e.NormalizedEmail)
+                .IsUnique()
+                .HasDatabaseName("EmailIndex")
+                .HasFilter("[NormalizedEmail] IS NOT NULL");
+        });
+        
         modelBuilder.Entity<TblUrlDetail>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PK_tbl_urlDetail");
