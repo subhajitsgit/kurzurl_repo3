@@ -10,7 +10,7 @@ public partial class TblUrlDetail
     public int Id { get; set; }
     public string? Title { get; set; }
 
-    public string? MainUrl { get; set; }
+    public string MainUrl { get; set; } = string.Empty;
 
     public string? ShortUrl { get; set; }
 

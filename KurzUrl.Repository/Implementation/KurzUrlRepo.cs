@@ -50,6 +50,31 @@ namespace KurzUrl.Repository.Implementation
                 .ToListAsync();
         }
 
+        public async Task<TblUrlDetail?> GetUrlById(int id, CancellationToken cancellationToken)
+        {
+            return await _context.TblUrlDetails
+                .Where(x => x.Id == id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        public async Task<bool> UpdateLinkRequest(TblUrlDetail tblUrlDetail, CancellationToken cancellationToken)
+        {
+            var existingUrl = await _context.TblUrlDetails
+                .Where(x => x.Id == tblUrlDetail.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingUrl == null)
+                return false;
+            
+            existingUrl.MainUrl = tblUrlDetail.MainUrl;
+            existingUrl.Title = tblUrlDetail.Title;
+            existingUrl.ModifiedOn = tblUrlDetail.ModifiedOn ?? DateTime.UtcNow;
+            existingUrl.ModifiedBy = tblUrlDetail.ModifiedBy;
+
+            await _context.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        
         public async Task<int> GetLatestUserPlanAsync(string userId, CancellationToken cancellationToken)
         {
             var latestPlan = await _context.TblUserPricingMappers
@@ -141,8 +166,6 @@ namespace KurzUrl.Repository.Implementation
             existingQR.QRImage = tblQRDetail.QRImage;
             existingQR.ModifiedOn = tblQRDetail.ModifiedOn ?? DateTime.UtcNow;
             existingQR.ModifiedBy = tblQRDetail.ModifiedBy;
-            // Preservar campos que no se actualizan
-            // CreatedOn, CreatedBy, IsActive se mantienen sin cambios
 
             await _context.SaveChangesAsync(cancellationToken);
             return true;

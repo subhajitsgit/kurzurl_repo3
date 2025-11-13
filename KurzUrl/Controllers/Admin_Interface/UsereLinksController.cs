@@ -17,7 +17,7 @@ namespace KurzUrl.Controllers.Admin_Interface
     [Route("api/[controller]")]
     [ApiController]
     public class UsereLinksController : ControllerBase
-     {
+    {
         public IKurzUrlRepo _kurzUrlRepo { get; set; }
         public IHttpContextAccessor _HttpContextAccessor { get; set; }
         private readonly ShortUrlContext _context;
@@ -106,21 +106,48 @@ namespace KurzUrl.Controllers.Admin_Interface
                 message = "short URL created successfully!"
             });
         }
-
-        [HttpGet("check-month-limit-sp/{userId:int}")]
-        public async Task<ActionResult<int>> CheckMonthLimitSP(int userId)
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [HttpPut("update")]
+        public async Task<ActionResult> Update([FromBody] UpdateLinkRequest request, CancellationToken cancellationToken)
         {
-            var conn = _context.Database.GetDbConnection();
-            await conn.OpenAsync();
+            if (Request == null)
+                return BadRequest(new { message = "Invalid request" });
+            
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "sp_CheckMonthLimit";
-            cmd.CommandType = System.Data.CommandType.StoredProcedure;
-            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@UserId", userId));
+            var existingUrl = await _kurzUrlRepo.GetUrlById(request.Id, cancellationToken);
+            if (existingUrl == null)
+                return NotFound(new { message = "Link not found" });
 
-            var count = (int)await cmd.ExecuteScalarAsync();
+            if (existingUrl.CreatedBy != userId)
+                return Forbid("You don't have permission to update this Link");
 
-            return Ok(count);
+            var entity = new TblUrlDetail
+            {
+                Id = request.Id,
+                MainUrl = request.MainUrl,
+                Title = request.Title,
+                ModifiedOn = DateTime.UtcNow,
+                ModifiedBy = userId
+            };
+
+            bool updated = await _kurzUrlRepo.UpdateLinkRequest(entity, cancellationToken);
+
+            if (!updated)
+                return StatusCode(500, new { message = "Error updating link" });
+
+            return Ok(new
+            {
+                id = entity.Id,
+                mainUrl = entity.MainUrl,
+                title = entity.Title,
+                modifiedOn = entity.ModifiedOn,
+                message = "Link updated successfully!"
+            });
         }
     }
 }

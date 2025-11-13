@@ -127,7 +127,6 @@ namespace KurzUrl.Controllers.Admin_Interface
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new { message = "User not authenticated" });
 
-            // Verificar que el QR existe y pertenece al usuario
             var existingQR = await _kurzUrlRepo.GetQRById(request.Id, cancellationToken);
             if (existingQR == null)
                 return NotFound(new { message = "QR code not found" });
@@ -135,7 +134,6 @@ namespace KurzUrl.Controllers.Admin_Interface
             if (existingQR.CreatedBy != userId)
                 return Forbid("You don't have permission to update this QR code");
 
-            // Actualizar el QR
             var entity = new TblQRDetail
             {
                 Id = request.Id,
