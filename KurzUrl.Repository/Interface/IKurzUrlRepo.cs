@@ -20,7 +20,9 @@ namespace KurzUrl.Repository.Interface
         Task<int> GetMonthlyCreatedLinkCount(string userId, CancellationToken ct);
         Task<int> GetMonthlyCreatedQRCount(string userId, CancellationToken cancellationToken);
         Task<List<TblQRDetail>> GetQRsCreatedBy(string userId, CancellationToken cancellationToken);
+        Task<TblQRDetail?> GetQRById(int id, CancellationToken cancellationToken);
         int SaveQRRequest(TblQRDetail tblQRDetail);
+        Task<bool> UpdateQRRequest(TblQRDetail tblQRDetail, CancellationToken cancellationToken);
         Task<PricingLimitDto?> GetPricingLimitAsync(int planId, int resourceId, CancellationToken cancellationToken);
     }
 }

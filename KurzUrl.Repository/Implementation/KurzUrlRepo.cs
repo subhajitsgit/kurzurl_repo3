@@ -113,12 +113,39 @@ namespace KurzUrl.Repository.Implementation
                 .ToListAsync(cancellationToken);
         }
 
+        public async Task<TblQRDetail?> GetQRById(int id, CancellationToken cancellationToken)
+        {
+            return await _context.TblQRDetails
+                .Where(x => x.Id == id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
         public int SaveQRRequest (TblQRDetail tblQRDetail)
         {
             _context.TblQRDetails.Add(tblQRDetail);
             _context.SaveChanges();
             return tblQRDetail.Id;
+        }
+
+        public async Task<bool> UpdateQRRequest(TblQRDetail tblQRDetail, CancellationToken cancellationToken)
+        {
+            var existingQR = await _context.TblQRDetails
+                .Where(x => x.Id == tblQRDetail.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingQR == null)
+                return false;
+
+            existingQR.MainUrl = tblQRDetail.MainUrl;
+            existingQR.Title = tblQRDetail.Title;
+            existingQR.QRImage = tblQRDetail.QRImage;
+            existingQR.ModifiedOn = tblQRDetail.ModifiedOn ?? DateTime.UtcNow;
+            existingQR.ModifiedBy = tblQRDetail.ModifiedBy;
+            // Preservar campos que no se actualizan
+            // CreatedOn, CreatedBy, IsActive se mantienen sin cambios
+
+            await _context.SaveChangesAsync(cancellationToken);
+            return true;
         }
     }
 }

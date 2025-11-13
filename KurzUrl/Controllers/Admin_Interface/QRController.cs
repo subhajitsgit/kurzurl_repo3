@@ -62,6 +62,9 @@ namespace KurzUrl.Controllers.Admin_Interface
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
+
             var mainUrl = request.MainUrl;
             var title = request.Title;
             var qrBase64 = request.QRBase64;
@@ -108,6 +111,53 @@ namespace KurzUrl.Controllers.Admin_Interface
                 qrBase64 = entity.QRImage,
                 createdOn = entity.CreatedOn,
                 message = "QR code created successfully!"
+            });
+        }
+
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [HttpPut("update")]
+        public async Task<ActionResult> Update([FromBody] UpdateQRRequest request, CancellationToken cancellationToken)
+        {
+            if (request == null)
+                return BadRequest(new { message = "Invalid request" });
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
+
+            // Verificar que el QR existe y pertenece al usuario
+            var existingQR = await _kurzUrlRepo.GetQRById(request.Id, cancellationToken);
+            if (existingQR == null)
+                return NotFound(new { message = "QR code not found" });
+
+            if (existingQR.CreatedBy != userId)
+                return Forbid("You don't have permission to update this QR code");
+
+            // Actualizar el QR
+            var entity = new TblQRDetail
+            {
+                Id = request.Id,
+                MainUrl = request.MainUrl,
+                Title = request.Title,
+                QRImage = Convert.FromBase64String(request.QRBase64),
+                ModifiedOn = DateTime.UtcNow,
+                ModifiedBy = userId
+            };
+
+            bool updated = await _kurzUrlRepo.UpdateQRRequest(entity, cancellationToken);
+            
+            if (!updated)
+                return StatusCode(500, new { message = "Error updating QR code" });
+
+            return Ok(new
+            {
+                id = entity.Id,
+                mainUrl = entity.MainUrl,
+                title = entity.Title,
+                modifiedOn = entity.ModifiedOn,
+                message = "QR code updated successfully!"
             });
         }
     }
