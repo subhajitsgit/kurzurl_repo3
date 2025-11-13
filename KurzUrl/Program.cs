@@ -160,8 +160,6 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IJWTService, JWTService>();
 builder.Services.AddScoped<IDbInitializer, DbInitializer>();
-builder.Services.AddScoped<IKurzUrl, KurzUrl.BusinessLayer.Implementation.KurzUrl>();
-builder.Services.AddScoped<IQRGenerator, QRGenerator>();
 
 
 var app = builder.Build();

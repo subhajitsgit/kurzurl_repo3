@@ -1,5 +1,4 @@
 ﻿using KurzUrl.BusinessLayer.Interface;
-using KurzUrl.Repository.Interface;
 using KurzUrl.Repository.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -13,28 +12,24 @@ namespace KurzUrl.Controllers.Admin_Interface
     [ApiController]
     public class QRController: ControllerBase
     {
-        public IKurzUrlRepo _kurzUrlRepo {  get; set; }
-        private readonly IQRGenerator _qrGenerator;
+        private readonly IQRService _qrService;
 
-        public QRController(
-            IQRGenerator qrGenerator,
-            IKurzUrlRepo kurzUrlRepo
-            )
+        public QRController(IQRService qrService)
         {
-            _qrGenerator = qrGenerator;
-            _kurzUrlRepo = kurzUrlRepo;
+            _qrService = qrService;
         }
 
         [HttpGet("generate")]
         public ActionResult Generate([FromQuery] string url)
         {
-            if (string.IsNullOrWhiteSpace((url)))
-                return BadRequest(new { message = "URL cannot be empty" });
-
             try
             {
-                string qrBase64 = _qrGenerator.GenerateQR(url);
+                string qrBase64 = _qrService.GenerateQR(url);
                 return Ok(new { qrBase64 });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -48,69 +43,47 @@ namespace KurzUrl.Controllers.Admin_Interface
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
                     ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? "";
-            var results = await _kurzUrlRepo.GetQRsCreatedBy(userId, cancellationToken);
-            return results;
+            return await _qrService.GetQRsCreatedByUserIdAsync(userId, cancellationToken);
         }
 
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [HttpPost("save")]
         public async Task<ActionResult> Save([FromBody] SaveQRRequest request, CancellationToken cancellationToken)
         {
-            if (Request == null)
-                return BadRequest("Invalid request");
-
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { message = "User not authenticated" });
+            var result = await _qrService.SaveQRAsync(request, userId, cancellationToken);
 
-            var mainUrl = request.MainUrl;
-            var title = request.Title;
-            var qrBase64 = request.QRBase64;
-
-            var planId = await _kurzUrlRepo.GetLatestUserPlanAsync(userId, cancellationToken);
-            var pricingLimitDto = await _kurzUrlRepo.GetPricingLimitAsync(planId, 2, cancellationToken);
-            
-            if (pricingLimitDto == null)
+            if (!result.Success)
             {
-                return BadRequest(new { message = "Pricing limit not found for this given plan." });
-            }
-            int pricingLimit = pricingLimitDto.Limit;
-            int createdQRs = await this._kurzUrlRepo.GetMonthlyCreatedQRCount(userId, cancellationToken);
-            if (createdQRs >= pricingLimit)
-            {
-                return BadRequest(new
+                if (result.PlanLimitReached != null)
                 {
-                    isPlanLimitReached = true,
-                    message = $"{pricingLimitDto.PlanName} reached",
-                    planName = pricingLimitDto.PlanName,
-                    planType = pricingLimitDto.PlanType,
-                    planLimit = pricingLimitDto.Limit,
-                    currentQRs = createdQRs,
-                    upgradeTo = pricingLimitDto.UpgradeToPlanName
-                });
+                    return BadRequest(new
+                    {
+                        isPlanLimitReached = result.PlanLimitReached.IsPlanLimitReached,
+                        message = result.PlanLimitReached.Message,
+                        planName = result.PlanLimitReached.PlanName,
+                        planType = result.PlanLimitReached.PlanType,
+                        planLimit = result.PlanLimitReached.PlanLimit,
+                        currentQRs = result.PlanLimitReached.CurrentCount,
+                        upgradeTo = result.PlanLimitReached.UpgradeTo
+                    });
+                }
+
+                if (result.Message == "User not authenticated")
+                    return Unauthorized(new { message = result.Message });
+
+                return BadRequest(new { message = result.Message });
             }
-
-            var entity = new TblQRDetail
-            {
-                MainUrl = mainUrl,
-                Title = title,
-                QRImage = Convert.FromBase64String(qrBase64),
-                CreatedOn = DateTime.UtcNow,
-                CreatedBy = userId.ToString(),
-                IsActive = true
-            };
-
-            int newId = _kurzUrlRepo.SaveQRRequest(entity);
 
             return Ok(new
             {
-                id = newId,
-                mainUrl = entity.MainUrl,
-                qrBase64 = entity.QRImage,
-                createdOn = entity.CreatedOn,
-                message = "QR code created successfully!"
+                id = result.Id,
+                mainUrl = result.MainUrl,
+                qrBase64 = result.QRImage,
+                createdOn = result.CreatedOn,
+                message = result.Message
             });
         }
 
@@ -118,44 +91,32 @@ namespace KurzUrl.Controllers.Admin_Interface
         [HttpPut("update")]
         public async Task<ActionResult> Update([FromBody] UpdateQRRequest request, CancellationToken cancellationToken)
         {
-            if (request == null)
-                return BadRequest(new { message = "Invalid request" });
-
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { message = "User not authenticated" });
+            var result = await _qrService.UpdateQRAsync(request, userId, cancellationToken);
 
-            var existingQR = await _kurzUrlRepo.GetQRById(request.Id, cancellationToken);
-            if (existingQR == null)
-                return NotFound(new { message = "QR code not found" });
-
-            if (existingQR.CreatedBy != userId)
-                return Forbid("You don't have permission to update this QR code");
-
-            var entity = new TblQRDetail
+            if (!result.Success)
             {
-                Id = request.Id,
-                MainUrl = request.MainUrl,
-                Title = request.Title,
-                QRImage = Convert.FromBase64String(request.QRBase64),
-                ModifiedOn = DateTime.UtcNow,
-                ModifiedBy = userId
-            };
-
-            bool updated = await _kurzUrlRepo.UpdateQRRequest(entity, cancellationToken);
-            
-            if (!updated)
-                return StatusCode(500, new { message = "Error updating QR code" });
+                if (result.Message == "User not authenticated")
+                    return Unauthorized(new { message = result.Message });
+                
+                if (result.Message == "QR code not found")
+                    return NotFound(new { message = result.Message });
+                
+                if (result.Message == "You don't have permission to update this QR code")
+                    return Forbid(result.Message);
+                
+                return StatusCode(500, new { message = result.Message });
+            }
 
             return Ok(new
             {
-                id = entity.Id,
-                mainUrl = entity.MainUrl,
-                title = entity.Title,
-                modifiedOn = entity.ModifiedOn,
-                message = "QR code updated successfully!"
+                id = result.Id,
+                mainUrl = result.MainUrl,
+                title = result.Title,
+                modifiedOn = result.ModifiedOn,
+                message = result.Message
             });
         }
     }
