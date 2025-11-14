@@ -15,6 +15,7 @@ namespace KurzUrl.BusinessLayer
             services.AddScoped<IQRGenerator, Implementation.QRGenerator>();
             services.AddScoped<IUserLinksService, Implementation.UserLinksService>();
             services.AddScoped<IQRService, Implementation.QRService>();
+            services.AddScoped<IAuthService, Implementation.AuthService>();
             return services;
         }
     }
